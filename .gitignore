@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Environment & Config (keep examples)
+babbell.env
+babbell.yaml
+
+# uv
+uv.lock

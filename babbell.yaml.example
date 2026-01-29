@@ -1,0 +1,15 @@
+# BabBell Configuration (YAML Reference)
+# Note: systemd EnvironmentFile uses KEY=VALUE format.
+# This YAML file is for reference only. Use babbell.env.example for actual deployment.
+# You can use a script to convert this YAML to .env format if needed.
+
+# Required: Slack credentials
+slack_bot_token: "xoxb-your-bot-token-here"
+slack_app_token: "xapp-your-app-token-here"
+
+# Optional settings with defaults
+sqlite_path: "./babbell.db"
+cooldown_seconds: 60
+include_actor_in_public_message: false
+enable_todays_menu: false
+menu_cache_ttl_seconds: 600
