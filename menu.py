@@ -28,7 +28,11 @@ TARGET_RESTAURANTS = {
     "3식당": ["3식당"],
     "자하연식당 2층": ["자하연식당 2층"],
     "예술계식당": ["예술계식당"],
+    "두레미담": ["두레미담"],
 }
+
+# Restaurants that need special parsing (only specific section)
+SELF_CORNER_ONLY = {"두레미담"}
 
 
 @dataclass
@@ -65,13 +69,32 @@ _menu_cache: TodaysMenu | None = None
 _cache_timestamp: float = 0
 
 
-def _clean_menu_text(raw: str) -> list[str]:
-    """Clean and parse menu text into individual items."""
+def _clean_menu_text(raw: str, self_corner_only: bool = False) -> list[str]:
+    """Clean and parse menu text into individual items.
+
+    Args:
+        raw: Raw menu text
+        self_corner_only: If True, only parse <셀프코너> section
+    """
     if not raw or not raw.strip():
         return []
 
+    text = raw
+
+    # For self-corner only restaurants, extract only that section
+    if self_corner_only:
+        # Find <셀프코너> section and stop at <주문식 메뉴> or end
+        match = re.search(r"<셀프코너>[^<]*", text, re.DOTALL)
+        if match:
+            text = match.group(0)
+        else:
+            # Try without angle brackets
+            match = re.search(r"셀프코너.*?(?=주문식|$)", text, re.DOTALL)
+            if match:
+                text = match.group(0)
+
     # Remove operation time info
-    text = re.sub(r"※\s*운영시간.*", "", raw)
+    text = re.sub(r"※\s*운영시간.*", "", text)
     text = re.sub(r"※\s*혼잡시간.*", "", text)
     text = re.sub(r"※.*", "", text)
 
@@ -87,6 +110,9 @@ def _clean_menu_text(raw: str) -> list[str]:
         if "운영시간" in line or "혼잡시간" in line:
             continue
         if line.startswith("<") and line.endswith(">"):
+            continue
+        # Skip section headers
+        if "셀프코너" in line or "주문식" in line:
             continue
         # Clean up common patterns
         line = re.sub(r"\s*:\s*[\d,]+원", "", line)  # Remove price
@@ -201,10 +227,11 @@ def fetch_menu() -> TodaysMenu:
             dinner_td = row.find("td", class_="dinner")
 
             restaurant = RestaurantMenu(name=matched_name)
+            is_self_corner = matched_name in SELF_CORNER_ONLY
 
             if breakfast_td:
                 raw = breakfast_td.get_text("\n", strip=True)
-                menus = _clean_menu_text(raw)
+                menus = _clean_menu_text(raw, self_corner_only=is_self_corner)
                 if menus:
                     restaurant.breakfast = MealInfo(
                         meal_type="breakfast", raw_text=raw, menus=menus
@@ -212,7 +239,7 @@ def fetch_menu() -> TodaysMenu:
 
             if lunch_td:
                 raw = lunch_td.get_text("\n", strip=True)
-                menus = _clean_menu_text(raw)
+                menus = _clean_menu_text(raw, self_corner_only=is_self_corner)
                 if menus:
                     restaurant.lunch = MealInfo(
                         meal_type="lunch", raw_text=raw, menus=menus
@@ -220,7 +247,7 @@ def fetch_menu() -> TodaysMenu:
 
             if dinner_td:
                 raw = dinner_td.get_text("\n", strip=True)
-                menus = _clean_menu_text(raw)
+                menus = _clean_menu_text(raw, self_corner_only=is_self_corner)
                 if menus:
                     restaurant.dinner = MealInfo(
                         meal_type="dinner", raw_text=raw, menus=menus

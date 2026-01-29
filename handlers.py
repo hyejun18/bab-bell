@@ -14,6 +14,16 @@ from broadcast import broadcast, send_dm
 from buttons import ACTION_ID_PREFIX, build_button_blocks, get_button
 from config import COOLDOWN_SECONDS, DEDUP_TTL_SECONDS
 from db import unsubscribe_user, upsert_user
+from poll import (
+    POLL_ACTION_PREFIX,
+    broadcast_poll,
+    create_poll,
+    record_vote,
+    render_poll_blocks,
+    save_poll_message,
+    update_all_poll_messages,
+    update_single_poll_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -178,6 +188,11 @@ def register_handlers(app: App) -> None:
             _handle_opt_out(client, user_id)
             return
 
+        # Handle START_POLL
+        if action_value == "START_POLL":
+            _handle_start_poll(client, user_id)
+            return
+
         # Handle broadcast actions
         if button.is_broadcast:
             _handle_broadcast_action(client, user_id, button)
@@ -232,3 +247,78 @@ def register_handlers(app: App) -> None:
             )
 
         send_dm(client, user_id, summary)
+
+    def _handle_start_poll(client: WebClient, user_id: str) -> None:
+        """Handle start poll action."""
+        # Check cooldown (use longer cooldown for poll start)
+        on_cooldown, remaining = _is_on_cooldown(user_id, "START_POLL")
+        if on_cooldown:
+            logger.info("User %s on cooldown for START_POLL, %d seconds remaining", user_id, remaining)
+            send_dm(client, user_id, f"쿨다운 중입니다. {remaining}초 후에 다시 시도해주세요.")
+            return
+
+        # Create poll and broadcast
+        poll_id = create_poll()
+        success, failure = broadcast_poll(client, poll_id, user_id)
+
+        summary = (
+            f":ballot_box: 투표 시작!\n"
+            f"• 성공: {success}명\n"
+            f"• 실패: {failure}명"
+        )
+        send_dm(client, user_id, summary)
+
+    # Poll vote handler
+    @app.action(re.compile(f"^{POLL_ACTION_PREFIX}vote_"))
+    def handle_poll_vote(ack: Ack, body: dict, client: WebClient) -> None:
+        """Handle poll vote button clicks."""
+        ack()
+
+        user_id = body["user"]["id"]
+        action = body["actions"][0]
+        action_id = action.get("action_id", "")
+        restaurant = action.get("value", "")
+
+        # Extract poll_id from action_id: poll_vote_{poll_id}
+        poll_id = action_id.replace(f"{POLL_ACTION_PREFIX}vote_", "")
+
+        if not poll_id or not restaurant:
+            logger.warning("Invalid poll vote: action_id=%s value=%s", action_id, restaurant)
+            return
+
+        logger.info("Poll vote: user=%s poll=%s restaurant=%s", user_id, poll_id, restaurant)
+
+        # Record vote
+        if not record_vote(poll_id, user_id, restaurant):
+            send_dm(client, user_id, "이 투표는 이미 종료되었습니다.")
+            return
+
+        # Update all poll messages (real-time sync)
+        update_all_poll_messages(client, poll_id)
+
+    # Poll refresh handler
+    @app.action(re.compile(f"^{POLL_ACTION_PREFIX}refresh_"))
+    def handle_poll_refresh(ack: Ack, body: dict, client: WebClient) -> None:
+        """Handle poll refresh button clicks."""
+        ack()
+
+        user_id = body["user"]["id"]
+        action = body["actions"][0]
+        action_id = action.get("action_id", "")
+
+        # Extract poll_id from action_id: poll_refresh_{poll_id}
+        poll_id = action_id.replace(f"{POLL_ACTION_PREFIX}refresh_", "")
+
+        if not poll_id:
+            logger.warning("Invalid poll refresh: action_id=%s", action_id)
+            return
+
+        # Get message info from body
+        channel_id = body.get("container", {}).get("channel_id")
+        message_ts = body.get("container", {}).get("message_ts")
+
+        if channel_id and message_ts:
+            # Update just this user's message
+            update_single_poll_message(client, poll_id, user_id, channel_id, message_ts)
+            # Also save/update the message reference
+            save_poll_message(poll_id, user_id, channel_id, message_ts)

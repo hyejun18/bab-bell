@@ -22,7 +22,8 @@ main.py          # Entry point: init logging, config, db, register handlers, sta
 ├─ handlers.py   # Event/action dispatcher with dedup & cooldown caches
 ├─ broadcast.py  # Message delivery engine
 ├─ buttons.py    # Button definitions (frozen dataclasses)
-└─ menu.py       # SNU cafeteria menu scraping & rendering
+├─ menu.py       # SNU cafeteria menu scraping & rendering
+└─ poll.py       # Real-time restaurant voting with live updates
 ```
 
 ### Data Flow
@@ -30,6 +31,7 @@ main.py          # Entry point: init logging, config, db, register handlers, sta
 1. User sends DM → `handle_dm_message()` → auto-subscribes user
 2. User clicks button → `handle_button_action()` → dedup check → cooldown check → route to handler
 3. Broadcast button → `broadcast()` → fetch menu → get subscribers → send DMs → log results
+4. Poll vote → `handle_poll_vote()` → `record_vote()` → `update_all_poll_messages()` (real-time sync)
 
 ### Key Patterns
 
@@ -43,6 +45,9 @@ main.py          # Entry point: init logging, config, db, register handlers, sta
 
 - `users`: Subscriber tracking (slack_user_id, name, dm_channel_id, is_subscribed)
 - `send_log`: Broadcast audit trail (broadcast_id, targets, success/failure counts)
+- `polls`: Poll sessions (poll_id, created_at, closed_at)
+- `poll_messages`: Sent poll messages for live updates (poll_id, user_id, channel_id, message_ts)
+- `poll_votes`: Vote records (poll_id, user_id, restaurant_name)
 
 ### Adding New Buttons
 

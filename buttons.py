@@ -70,10 +70,20 @@ BUTTON_DEFINITIONS: dict[str, ButtonDefinition] = {
         include_menu=False,
         style="danger",
     ),
+    "START_POLL": ButtonDefinition(
+        value="START_POLL",
+        label="🗳️ 식당 투표",
+        template="",
+        is_broadcast=False,  # Handled specially in poll.py
+        include_menu=False,
+    ),
 }
 
 # Broadcast buttons (ordered for display)
 BROADCAST_BUTTON_VALUES = ["NOW", "IN_5", "CANCEL", "SNACK"]
+
+# Special action buttons (non-broadcast, non-opt-out)
+SPECIAL_BUTTON_VALUES = ["START_POLL"]
 
 
 def get_button(value: str) -> ButtonDefinition | None:

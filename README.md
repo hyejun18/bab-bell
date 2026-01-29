@@ -9,6 +9,7 @@ Slack Bolt + Socket Mode를 사용한 식사 알림 DM 브로드캐스트 봇입
 - **구독 취소**: "수신 거부" 버튼으로 간편하게 취소
 - **오늘의 메뉴**: SNU 식당 메뉴 자동 조회 및 포함 (선택적)
 - **쿨다운 & 중복 방지**: 동일 버튼 연속 클릭 방지
+- **실시간 식당 투표**: 구독자 전원이 참여하는 실시간 투표 (Polly 스타일)
 
 ## 버튼
 
@@ -18,6 +19,7 @@ Slack Bolt + Socket Mode를 사용한 식사 알림 DM 브로드캐스트 봇입
 | 5분 뒤 밥 | 5분 후 출발 알림 + 메뉴 |
 | 취소 | 밥 취소 알림 |
 | 간식 | 간식 알림 |
+| 🗳️ 식당 투표 | 실시간 식당 투표 시작 |
 | 수신 거부 | 구독 취소 |
 
 ## 요구사항
@@ -127,6 +129,9 @@ SQLite를 사용하며, 다음 테이블을 관리합니다:
 
 - `users`: 구독자 정보 (slack_user_id, is_subscribed 등)
 - `send_log`: 브로드캐스트 전송 로그
+- `polls`: 투표 세션
+- `poll_messages`: 투표 메시지 추적 (실시간 업데이트용)
+- `poll_votes`: 투표 기록
 
 ## 프로젝트 구조
 
@@ -138,6 +143,7 @@ bab-bell/
 ├── buttons.py        # 버튼 정의
 ├── menu.py           # 오늘의 메뉴 파싱
 ├── broadcast.py      # 브로드캐스트 로직
+├── poll.py           # 실시간 식당 투표
 ├── handlers.py       # Slack 이벤트/액션 핸들러
 ├── pyproject.toml    # 프로젝트 설정 (uv)
 ├── babbell.service   # systemd unit 파일

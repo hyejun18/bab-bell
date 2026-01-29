@@ -81,6 +81,43 @@ def init_db() -> None:
             "CREATE INDEX IF NOT EXISTS idx_send_log_ok_time ON send_log(ok, created_at)"
         )
 
+        # Poll tables
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS polls (
+                poll_id     TEXT PRIMARY KEY,
+                created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                closed_at   TEXT
+            )
+        """)
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS poll_messages (
+                poll_id     TEXT NOT NULL,
+                user_id     TEXT NOT NULL,
+                channel_id  TEXT NOT NULL,
+                message_ts  TEXT NOT NULL,
+                PRIMARY KEY (poll_id, user_id),
+                FOREIGN KEY(poll_id) REFERENCES polls(poll_id)
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_poll_messages_poll ON poll_messages(poll_id)"
+        )
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS poll_votes (
+                poll_id         TEXT NOT NULL,
+                user_id         TEXT NOT NULL,
+                restaurant_name TEXT NOT NULL,
+                voted_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                PRIMARY KEY (poll_id, user_id, restaurant_name),
+                FOREIGN KEY(poll_id) REFERENCES polls(poll_id)
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_poll_votes_poll ON poll_votes(poll_id)"
+        )
+
 
 @dataclass
 class User:

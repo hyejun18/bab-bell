@@ -58,6 +58,8 @@ def _build_broadcast_message(
 
     Returns (text, blocks) tuple.
     """
+    from buttons import ACTION_ID_PREFIX
+
     text = button.template
 
     # Optionally include actor (default: false)
@@ -75,6 +77,21 @@ def _build_broadcast_message(
     if menu_blocks:
         blocks.append({"type": "divider"})
         blocks.extend(menu_blocks)
+
+    # Add poll button for meal broadcasts (NOW, IN_5)
+    if button.value in ("NOW", "IN_5"):
+        blocks.append({"type": "divider"})
+        blocks.append({
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "🗳️ 식당 투표 시작", "emoji": True},
+                    "action_id": f"{ACTION_ID_PREFIX}START_POLL",
+                    "value": "START_POLL",
+                }
+            ],
+        })
 
     return text, blocks
 
