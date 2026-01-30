@@ -170,7 +170,7 @@ bab-bell/
 그리고 `BROADCAST_BUTTON_VALUES` 리스트에 추가:
 
 ```python
-BROADCAST_BUTTON_VALUES = ["NOW", "IN_5", "CANCEL", "SNACK", "CAFE"]
+BROADCAST_BUTTON_VALUES = ["NOW", "IN_10", "CANCEL", "SNACK", "CAFE"]
 ```
 
 ### 웹 집계 페이지 (향후)

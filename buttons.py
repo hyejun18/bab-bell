@@ -41,10 +41,10 @@ BUTTON_DEFINITIONS: dict[str, ButtonDefinition] = {
         include_menu=True,
         style="primary",
     ),
-    "IN_5": ButtonDefinition(
-        value="IN_5",
-        label="5분 뒤 밥",
-        template=":fork_and_knife: 밥 봉화대 – 5분 뒤 밥 출발합니다.",
+    "IN_10": ButtonDefinition(
+        value="IN_10",
+        label="10분 뒤 밥",
+        template=":fork_and_knife: 밥 봉화대 – 10분 뒤 밥 출발합니다.",
         is_broadcast=True,
         include_menu=True,
     ),
@@ -80,7 +80,7 @@ BUTTON_DEFINITIONS: dict[str, ButtonDefinition] = {
 }
 
 # Broadcast buttons (ordered for display)
-BROADCAST_BUTTON_VALUES = ["NOW", "IN_5", "CANCEL", "SNACK"]
+BROADCAST_BUTTON_VALUES = ["NOW", "IN_10", "CANCEL", "SNACK"]
 
 # Special action buttons (non-broadcast, non-opt-out)
 SPECIAL_BUTTON_VALUES = ["START_POLL"]

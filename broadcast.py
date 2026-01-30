@@ -78,8 +78,8 @@ def _build_broadcast_message(
         blocks.append({"type": "divider"})
         blocks.extend(menu_blocks)
 
-    # Add poll button for meal broadcasts (NOW, IN_5)
-    if button.value in ("NOW", "IN_5"):
+    # Add poll button for meal broadcasts (NOW, IN_10)
+    if button.value in ("NOW", "IN_10"):
         blocks.append({"type": "divider"})
         blocks.append({
             "type": "actions",
