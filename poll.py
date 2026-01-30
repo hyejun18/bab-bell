@@ -238,17 +238,9 @@ def render_poll_blocks(
         vote_indicator = " :white_check_mark:" if is_my_vote else ""
         restaurant_text = f"📍 *{restaurant}* ({count}표){vote_indicator}"
 
-        # Add voter names - only mention users from same workspace
+        # Add voter names - mention all users (works across connected workspaces)
         if voters:
-            voter_parts = []
-            for voter in voters:
-                if viewer_workspace_id and voter.workspace_id == viewer_workspace_id:
-                    # Same workspace - can mention
-                    voter_parts.append(f"<@{voter.user_id}>")
-                else:
-                    # Different workspace - show generic indicator
-                    voter_parts.append("👤")
-            voter_mentions = ", ".join(voter_parts)
+            voter_mentions = ", ".join(f"<@{voter.user_id}>" for voter in voters)
             restaurant_text += f"\n      └ {voter_mentions}"
 
         if is_open:
