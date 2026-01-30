@@ -91,8 +91,11 @@ def get_button(value: str) -> ButtonDefinition | None:
     return BUTTON_DEFINITIONS.get(value)
 
 
-def build_button_blocks() -> list[dict[str, Any]]:
+def build_button_blocks(include_opt_out: bool = True) -> list[dict[str, Any]]:
     """Build Block Kit blocks for all buttons.
+
+    Args:
+        include_opt_out: Whether to include the opt-out button (default: True)
 
     Returns a list of Block Kit blocks ready for chat.postMessage.
     """
@@ -110,17 +113,6 @@ def build_button_blocks() -> list[dict[str, Any]]:
             element["style"] = btn.style
         broadcast_elements.append(element)
 
-    # OPT_OUT button (separate section)
-    opt_out_btn = BUTTON_DEFINITIONS["OPT_OUT"]
-    opt_out_element: dict[str, Any] = {
-        "type": "button",
-        "text": {"type": "plain_text", "text": opt_out_btn.label, "emoji": True},
-        "action_id": get_action_id(opt_out_btn.value),
-        "value": opt_out_btn.value,
-    }
-    if opt_out_btn.style:
-        opt_out_element["style"] = opt_out_btn.style
-
     blocks = [
         {
             "type": "section",
@@ -130,17 +122,32 @@ def build_button_blocks() -> list[dict[str, Any]]:
             },
         },
         {"type": "actions", "elements": broadcast_elements},
-        {"type": "divider"},
-        {
-            "type": "context",
-            "elements": [
-                {
-                    "type": "mrkdwn",
-                    "text": "더 이상 알림을 받고 싶지 않으면 아래 버튼을 누르세요.",
-                }
-            ],
-        },
-        {"type": "actions", "elements": [opt_out_element]},
     ]
+
+    # OPT_OUT button (only for new subscribers)
+    if include_opt_out:
+        opt_out_btn = BUTTON_DEFINITIONS["OPT_OUT"]
+        opt_out_element: dict[str, Any] = {
+            "type": "button",
+            "text": {"type": "plain_text", "text": opt_out_btn.label, "emoji": True},
+            "action_id": get_action_id(opt_out_btn.value),
+            "value": opt_out_btn.value,
+        }
+        if opt_out_btn.style:
+            opt_out_element["style"] = opt_out_btn.style
+
+        blocks.extend([
+            {"type": "divider"},
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": "더 이상 알림을 받고 싶지 않으면 아래 버튼을 누르세요. 다시 받으려면 언제든 DM 주세요!",
+                    }
+                ],
+            },
+            {"type": "actions", "elements": [opt_out_element]},
+        ])
 
     return blocks

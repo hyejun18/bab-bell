@@ -140,15 +140,16 @@ def register_handlers(app: App, workspace_id: str) -> None:
         )
 
         # Send response with button blocks
-        blocks = build_button_blocks()
         if was_subscribed:
-            # Already subscribed - just show buttons
+            # Already subscribed - just show action buttons (no opt-out)
+            blocks = build_button_blocks(include_opt_out=False)
             say(
                 text="밥벨 버튼",
                 blocks=blocks,
             )
         else:
-            # New or re-subscription
+            # New or re-subscription - show all buttons including opt-out
+            blocks = build_button_blocks(include_opt_out=True)
             say(
                 text="구독 처리 완료! 이제 밥벨을 받습니다.",
                 blocks=[
