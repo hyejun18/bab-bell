@@ -137,32 +137,30 @@ def migrate_db() -> None:
     """Migrate existing database to support multi-workspace.
 
     Adds workspace_id column to existing tables if they don't have it.
+    Only runs on tables that already exist (new tables will be created with workspace_id).
     """
     with get_db() as conn:
-        # Check if migration is needed by checking users table schema
-        cursor = conn.execute("PRAGMA table_info(users)")
-        columns = {row["name"] for row in cursor.fetchall()}
+        # Helper to check if table exists and needs migration
+        def needs_migration(table_name: str) -> bool:
+            # PRAGMA doesn't support parameters, use string formatting (safe for table names)
+            cursor = conn.execute(f"PRAGMA table_info({table_name})")
+            columns = {row["name"] for row in cursor.fetchall()}
+            # If table doesn't exist or already has workspace_id, no migration needed
+            if not columns or "workspace_id" in columns:
+                return False
+            return True
 
-        if "workspace_id" not in columns:
-            # Migration needed - add workspace_id to existing tables
+        # Migrate each table if needed
+        if needs_migration("users"):
             conn.execute("ALTER TABLE users ADD COLUMN workspace_id TEXT NOT NULL DEFAULT 'default'")
 
-        # Check send_log
-        cursor = conn.execute("PRAGMA table_info(send_log)")
-        columns = {row["name"] for row in cursor.fetchall()}
-        if "workspace_id" not in columns:
+        if needs_migration("send_log"):
             conn.execute("ALTER TABLE send_log ADD COLUMN workspace_id TEXT NOT NULL DEFAULT 'default'")
 
-        # Check poll_messages
-        cursor = conn.execute("PRAGMA table_info(poll_messages)")
-        columns = {row["name"] for row in cursor.fetchall()}
-        if "workspace_id" not in columns:
+        if needs_migration("poll_messages"):
             conn.execute("ALTER TABLE poll_messages ADD COLUMN workspace_id TEXT NOT NULL DEFAULT 'default'")
 
-        # Check poll_votes
-        cursor = conn.execute("PRAGMA table_info(poll_votes)")
-        columns = {row["name"] for row in cursor.fetchall()}
-        if "workspace_id" not in columns:
+        if needs_migration("poll_votes"):
             conn.execute("ALTER TABLE poll_votes ADD COLUMN workspace_id TEXT NOT NULL DEFAULT 'default'")
 
 

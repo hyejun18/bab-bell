@@ -75,19 +75,33 @@ def main() -> None:
     for ws in workspaces:
         logger.info("  - %s (%s)", ws.workspace_id, ws.name)
 
-    # Initialize database
-    logger.info("Initializing database...")
-    init_db()
-
-    # Migrate existing database if needed
+    # Migrate existing database if needed (must run before init_db)
     logger.info("Checking for database migrations...")
     migrate_db()
 
-    # Create runners for each workspace
+    # Initialize database (creates tables/indexes if missing)
+    logger.info("Initializing database...")
+    init_db()
+
+    # Create runners for each workspace (skip failed ones)
     runners: list[WorkspaceRunner] = []
     for ws_config in workspaces:
-        runner = WorkspaceRunner(ws_config)
-        runners.append(runner)
+        try:
+            runner = WorkspaceRunner(ws_config)
+            runners.append(runner)
+        except Exception as e:
+            logger.error(
+                "Failed to initialize workspace %s (%s): %s - skipping",
+                ws_config.workspace_id,
+                ws_config.name,
+                e,
+            )
+
+    if not runners:
+        logger.error("No workspaces could be initialized. Exiting.")
+        sys.exit(1)
+
+    logger.info("Successfully initialized %d/%d workspace(s)", len(runners), len(workspaces))
 
     if len(runners) == 1:
         # Single workspace - run in main thread (blocking)
