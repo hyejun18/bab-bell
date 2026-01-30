@@ -271,7 +271,7 @@ def register_handlers(app: App, workspace_id: str) -> None:
         success, failure = broadcast_poll(poll_id, user_id)
 
         summary = (
-            f":ballot_box: 투표 시작!\n"
+            f":ballot_box_with_ballot: 투표 시작!\n"
             f"• 성공: {success}명\n"
             f"• 실패: {failure}명"
         )

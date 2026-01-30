@@ -224,7 +224,7 @@ def render_poll_blocks(
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "━━━━━━━━━━━━━━━━━━\n:ballot_box: *오늘 어디 가실래요?* (중복투표 가능)",
+                "text": "━━━━━━━━━━━━━━━━━━\n:ballot_box_with_ballot: *오늘 어디 가실래요?* (중복투표 가능)",
             },
         },
     ]
