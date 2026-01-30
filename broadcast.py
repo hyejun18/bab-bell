@@ -98,13 +98,15 @@ def _build_broadcast_message(
 
 def broadcast(
     client: WebClient,
+    workspace_id: str,
     button: ButtonDefinition,
     initiated_by: str,
 ) -> BroadcastResult:
-    """Send DM broadcast to all subscribed users.
+    """Send DM broadcast to all subscribed users in a workspace.
 
     Args:
         client: Slack WebClient
+        workspace_id: Workspace ID to broadcast to
         button: Button definition that triggered this broadcast
         initiated_by: Slack user ID who initiated the broadcast
 
@@ -130,12 +132,13 @@ def broadcast(
         menu_data=menu_data,
     )
 
-    # Get subscribed users
-    users = get_subscribed_users()
+    # Get subscribed users for this workspace
+    users = get_subscribed_users(workspace_id)
 
     logger.info(
-        "Starting broadcast broadcast_id=%s action=%s initiated_by=%s targets=%d",
+        "Starting broadcast broadcast_id=%s workspace=%s action=%s initiated_by=%s targets=%d",
         broadcast_id,
+        workspace_id,
         action,
         initiated_by,
         len(users),
@@ -159,7 +162,7 @@ def broadcast(
             if not dm_channel_id:
                 dm_channel_id = _open_dm_channel(client, user.slack_user_id)
                 if dm_channel_id:
-                    update_user_dm_channel(user.slack_user_id, dm_channel_id)
+                    update_user_dm_channel(workspace_id, user.slack_user_id, dm_channel_id)
 
             if not dm_channel_id:
                 raise SlackApiError("Failed to open DM channel", {"error": "channel_not_found"})
@@ -193,6 +196,7 @@ def broadcast(
 
         # Log to send_log
         insert_send_log(
+            workspace_id=workspace_id,
             broadcast_id=broadcast_id,
             action=action,
             initiated_by=initiated_by,

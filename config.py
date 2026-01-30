@@ -1,10 +1,8 @@
 """Configuration module for BabBell bot."""
 
+import json
 import os
-
-# Required environment variables
-SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN")
-SLACK_APP_TOKEN = os.environ.get("SLACK_APP_TOKEN")
+from dataclasses import dataclass
 
 # Optional environment variables with defaults
 SQLITE_PATH = os.environ.get("SQLITE_PATH", "./babbell.db")
@@ -23,12 +21,73 @@ MENU_CACHE_TTL_SECONDS = int(os.environ.get("MENU_CACHE_TTL_SECONDS", "600"))
 DEDUP_TTL_SECONDS = 300  # 5 minutes
 
 
-def validate_config() -> None:
-    """Validate required configuration values."""
-    missing = []
-    if not SLACK_BOT_TOKEN:
-        missing.append("SLACK_BOT_TOKEN")
-    if not SLACK_APP_TOKEN:
-        missing.append("SLACK_APP_TOKEN")
-    if missing:
-        raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
+@dataclass
+class WorkspaceConfig:
+    """Configuration for a single Slack workspace."""
+    workspace_id: str
+    bot_token: str
+    app_token: str
+    name: str = ""
+
+
+def load_workspaces() -> list[WorkspaceConfig]:
+    """Load workspace configurations.
+
+    Supports two modes:
+    1. Multi-workspace: WORKSPACES env var (JSON array)
+       Example: [{"id": "team1", "bot_token": "xoxb-...", "app_token": "xapp-...", "name": "Team 1"}]
+
+    2. Single workspace (legacy): SLACK_BOT_TOKEN + SLACK_APP_TOKEN
+       Workspace ID defaults to "default"
+    """
+    workspaces_json = os.environ.get("WORKSPACES")
+
+    if workspaces_json:
+        # Multi-workspace mode
+        try:
+            workspaces_data = json.loads(workspaces_json)
+            workspaces = []
+            for ws in workspaces_data:
+                workspaces.append(WorkspaceConfig(
+                    workspace_id=ws["id"],
+                    bot_token=ws["bot_token"],
+                    app_token=ws["app_token"],
+                    name=ws.get("name", ws["id"]),
+                ))
+            return workspaces
+        except (json.JSONDecodeError, KeyError) as e:
+            raise ValueError(f"Invalid WORKSPACES JSON format: {e}")
+    else:
+        # Legacy single workspace mode
+        bot_token = os.environ.get("SLACK_BOT_TOKEN")
+        app_token = os.environ.get("SLACK_APP_TOKEN")
+
+        if bot_token and app_token:
+            return [WorkspaceConfig(
+                workspace_id="default",
+                bot_token=bot_token,
+                app_token=app_token,
+                name="Default",
+            )]
+
+    return []
+
+
+def validate_config() -> list[WorkspaceConfig]:
+    """Validate configuration and return workspace configs."""
+    workspaces = load_workspaces()
+
+    if not workspaces:
+        raise ValueError(
+            "No workspace configuration found. "
+            "Set either WORKSPACES (JSON) or SLACK_BOT_TOKEN + SLACK_APP_TOKEN"
+        )
+
+    # Validate each workspace
+    for ws in workspaces:
+        if not ws.bot_token.startswith("xoxb-"):
+            raise ValueError(f"Workspace {ws.workspace_id}: bot_token must start with 'xoxb-'")
+        if not ws.app_token.startswith("xapp-"):
+            raise ValueError(f"Workspace {ws.workspace_id}: app_token must start with 'xapp-'")
+
+    return workspaces

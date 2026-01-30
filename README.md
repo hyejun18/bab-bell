@@ -10,6 +10,7 @@ Slack Bolt + Socket Mode를 사용한 식사 알림 DM 브로드캐스트 봇입
 - **오늘의 메뉴**: SNU 식당 메뉴 자동 조회 및 포함 (선택적)
 - **쿨다운 & 중복 방지**: 동일 버튼 연속 클릭 방지
 - **실시간 식당 투표**: 구독자 전원이 참여하는 실시간 투표 (Polly 스타일)
+- **멀티 워크스페이스**: N개의 Slack 워크스페이스 동시 운영 (투표 결과 통합)
 
 ## 버튼
 
@@ -113,15 +114,45 @@ sudo journalctl -u babbell -f
 
 ## 환경 변수
 
+### 단일 워크스페이스 모드 (기존 방식)
+
 | 변수 | 필수 | 기본값 | 설명 |
 |------|------|--------|------|
-| `SLACK_BOT_TOKEN` | Yes | - | Slack Bot OAuth Token (xoxb-...) |
-| `SLACK_APP_TOKEN` | Yes | - | Slack App-Level Token (xapp-...) |
+| `SLACK_BOT_TOKEN` | Yes* | - | Slack Bot OAuth Token (xoxb-...) |
+| `SLACK_APP_TOKEN` | Yes* | - | Slack App-Level Token (xapp-...) |
+
+### 멀티 워크스페이스 모드
+
+| 변수 | 필수 | 기본값 | 설명 |
+|------|------|--------|------|
+| `WORKSPACES` | Yes* | - | JSON 배열 형식 (아래 예시 참조) |
+
+*`WORKSPACES` 또는 `SLACK_BOT_TOKEN` + `SLACK_APP_TOKEN` 중 하나 필수
+
+### 공통 설정
+
+| 변수 | 필수 | 기본값 | 설명 |
+|------|------|--------|------|
 | `SQLITE_PATH` | No | `./babbell.db` | SQLite DB 파일 경로 |
 | `COOLDOWN_SECONDS` | No | `60` | 동일 버튼 쿨다운 (초) |
 | `INCLUDE_ACTOR_IN_PUBLIC_MESSAGE` | No | `false` | 브로드캐스트에 클릭자 표시 |
 | `ENABLE_TODAYS_MENU` | No | `false` | 오늘의 메뉴 기능 활성화 |
 | `MENU_CACHE_TTL_SECONDS` | No | `600` | 메뉴 캐시 TTL (초) |
+
+### 멀티 워크스페이스 설정 예시
+
+```bash
+# babbell.env
+WORKSPACES='[
+  {"id": "team-a", "name": "팀 A", "bot_token": "xoxb-...", "app_token": "xapp-..."},
+  {"id": "team-b", "name": "팀 B", "bot_token": "xoxb-...", "app_token": "xapp-..."}
+]'
+```
+
+멀티 워크스페이스 모드에서:
+- **브로드캐스트**: 버튼을 누른 워크스페이스의 구독자에게만 전송
+- **투표**: 모든 워크스페이스에 동시 전송, 결과는 통합 집계
+- **투표 참여자 표시**: 같은 워크스페이스 유저는 `@멘션`, 다른 워크스페이스는 `👤`로 표시
 
 ## 데이터베이스
 

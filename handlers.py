@@ -23,6 +23,7 @@ from poll import (
     save_poll_message,
     update_all_poll_messages,
     update_single_poll_message,
+    register_client,
 )
 
 logger = logging.getLogger(__name__)
@@ -88,8 +89,15 @@ def _get_user_info(client: WebClient, user_id: str) -> dict[str, Any]:
     return {}
 
 
-def register_handlers(app: App) -> None:
-    """Register all event and action handlers with the app."""
+def register_handlers(app: App, workspace_id: str) -> None:
+    """Register all event and action handlers with the app.
+
+    Args:
+        app: Slack Bolt App instance
+        workspace_id: Workspace ID for this app instance
+    """
+    # Register client for cross-workspace operations (e.g., poll updates)
+    register_client(workspace_id, app.client)
 
     @app.event("message")
     def handle_dm_message(event: dict, client: WebClient, say: Say) -> None:
@@ -109,10 +117,10 @@ def register_handlers(app: App) -> None:
 
         # Check if already subscribed
         from db import get_user
-        existing_user = get_user(user_id)
+        existing_user = get_user(workspace_id, user_id)
         was_subscribed = existing_user and existing_user.is_subscribed
 
-        logger.info("Received DM from user %s, was_subscribed=%s", user_id, was_subscribed)
+        logger.info("Received DM from user %s in workspace %s, was_subscribed=%s", user_id, workspace_id, was_subscribed)
 
         # Fetch user info
         user_info = _get_user_info(client, user_id)
@@ -122,6 +130,7 @@ def register_handlers(app: App) -> None:
 
         # Upsert user with is_subscribed=1
         upsert_user(
+            workspace_id=workspace_id,
             slack_user_id=user_id,
             slack_name=user_info.get("slack_name"),
             display_name=user_info.get("display_name"),
@@ -200,8 +209,8 @@ def register_handlers(app: App) -> None:
 
     def _handle_opt_out(client: WebClient, user_id: str) -> None:
         """Handle opt-out (unsubscribe) action."""
-        unsubscribe_user(user_id)
-        logger.info("User %s opted out", user_id)
+        unsubscribe_user(workspace_id, user_id)
+        logger.info("User %s in workspace %s opted out", user_id, workspace_id)
         send_dm(
             client,
             user_id,
@@ -228,8 +237,8 @@ def register_handlers(app: App) -> None:
             )
             return
 
-        # Execute broadcast
-        result = broadcast(client, button, user_id)
+        # Execute broadcast to this workspace only
+        result = broadcast(client, workspace_id, button, user_id)
 
         # Send summary DM to initiator
         if result.failure_count == 0:
@@ -257,9 +266,9 @@ def register_handlers(app: App) -> None:
             send_dm(client, user_id, f"쿨다운 중입니다. {remaining}초 후에 다시 시도해주세요.")
             return
 
-        # Create poll and broadcast
+        # Create poll and broadcast to ALL workspaces
         poll_id = create_poll()
-        success, failure = broadcast_poll(client, poll_id, user_id)
+        success, failure = broadcast_poll(poll_id, user_id)
 
         summary = (
             f":ballot_box: 투표 시작!\n"
@@ -286,15 +295,16 @@ def register_handlers(app: App) -> None:
             logger.warning("Invalid poll vote: action_id=%s value=%s", action_id, restaurant)
             return
 
-        logger.info("Poll vote: user=%s poll=%s restaurant=%s", user_id, poll_id, restaurant)
+        logger.info("Poll vote: workspace=%s user=%s poll=%s restaurant=%s", workspace_id, user_id, poll_id, restaurant)
 
-        # Record vote
-        if not record_vote(poll_id, user_id, restaurant):
+        # Record vote with workspace_id
+        success, _ = record_vote(poll_id, workspace_id, user_id, restaurant)
+        if not success:
             send_dm(client, user_id, "이 투표는 이미 종료되었습니다.")
             return
 
-        # Update all poll messages (real-time sync)
-        update_all_poll_messages(client, poll_id)
+        # Update all poll messages across all workspaces (real-time sync)
+        update_all_poll_messages(poll_id)
 
     # Poll refresh handler
     @app.action(re.compile(f"^{POLL_ACTION_PREFIX}refresh_"))
@@ -319,6 +329,6 @@ def register_handlers(app: App) -> None:
 
         if channel_id and message_ts:
             # Update just this user's message
-            update_single_poll_message(client, poll_id, user_id, channel_id, message_ts)
+            update_single_poll_message(client, poll_id, workspace_id, user_id, channel_id, message_ts)
             # Also save/update the message reference
-            save_poll_message(poll_id, user_id, channel_id, message_ts)
+            save_poll_message(poll_id, workspace_id, user_id, channel_id, message_ts)
