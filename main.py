@@ -30,6 +30,21 @@ class WorkspaceRunner:
 
     def __init__(self, config: WorkspaceConfig):
         self.config = config
+
+        # Debug: log token info (without exposing full token)
+        bot_token = config.bot_token
+        app_token = config.app_token
+        logger.debug(
+            "Workspace %s: bot_token=%s...%s (len=%d), app_token=%s...%s (len=%d)",
+            config.workspace_id,
+            bot_token[:10] if bot_token else "None",
+            bot_token[-4:] if bot_token else "",
+            len(bot_token) if bot_token else 0,
+            app_token[:10] if app_token else "None",
+            app_token[-4:] if app_token else "",
+            len(app_token) if app_token else 0,
+        )
+
         self.app = App(token=config.bot_token)
         self.handler = SocketModeHandler(self.app, config.app_token)
 
@@ -90,11 +105,22 @@ def main() -> None:
             runner = WorkspaceRunner(ws_config)
             runners.append(runner)
         except Exception as e:
+            # Debug: log token info for failed workspace
+            bot_token = ws_config.bot_token
+            app_token = ws_config.app_token
             logger.error(
-                "Failed to initialize workspace %s (%s): %s - skipping",
+                "Failed to initialize workspace %s (%s): %s - skipping\n"
+                "  bot_token: %s...%s (len=%d, expected prefix: xoxb-)\n"
+                "  app_token: %s...%s (len=%d, expected prefix: xapp-)",
                 ws_config.workspace_id,
                 ws_config.name,
                 e,
+                bot_token[:10] if bot_token else "None",
+                bot_token[-4:] if bot_token else "",
+                len(bot_token) if bot_token else 0,
+                app_token[:10] if app_token else "None",
+                app_token[-4:] if app_token else "",
+                len(app_token) if app_token else 0,
             )
 
     if not runners:

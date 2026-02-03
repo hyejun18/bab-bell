@@ -1,5 +1,6 @@
 """Database module for BabBell bot using SQLite."""
 
+import logging
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -7,6 +8,8 @@ from dataclasses import dataclass
 from typing import Iterator
 
 from config import SQLITE_PATH
+
+logger = logging.getLogger(__name__)
 
 # Thread-local storage for connections
 _local = threading.local()
@@ -136,32 +139,134 @@ def init_db() -> None:
 def migrate_db() -> None:
     """Migrate existing database to support multi-workspace.
 
-    Adds workspace_id column to existing tables if they don't have it.
-    Only runs on tables that already exist (new tables will be created with workspace_id).
+    Recreates tables with new primary keys that include workspace_id.
     """
     with get_db() as conn:
-        # Helper to check if table exists and needs migration
-        def needs_migration(table_name: str) -> bool:
-            # PRAGMA doesn't support parameters, use string formatting (safe for table names)
+        # Helper to check if workspace_id is part of primary key
+        def pk_includes_workspace(table_name: str) -> bool:
             cursor = conn.execute(f"PRAGMA table_info({table_name})")
-            columns = {row["name"] for row in cursor.fetchall()}
-            # If table doesn't exist or already has workspace_id, no migration needed
-            if not columns or "workspace_id" in columns:
-                return False
-            return True
+            rows = cursor.fetchall()
+            if not rows:
+                return True  # Table doesn't exist, will be created correctly
+            for row in rows:
+                if row["name"] == "workspace_id" and row["pk"] > 0:
+                    return True
+            return False
 
-        # Migrate each table if needed
-        if needs_migration("users"):
-            conn.execute("ALTER TABLE users ADD COLUMN workspace_id TEXT NOT NULL DEFAULT 'default'")
+        # Check if users table needs full migration (primary key change)
+        cursor = conn.execute("PRAGMA table_info(users)")
+        columns = {row["name"] for row in cursor.fetchall()}
 
-        if needs_migration("send_log"):
+        if columns and not pk_includes_workspace("users"):
+            # Full migration needed - recreate tables with new schema
+            logger.info("Migrating users table to multi-workspace schema...")
+
+            # Check if workspace_id column exists (from partial migration)
+            has_workspace_col = "workspace_id" in columns
+
+            # 1. Create new users table
+            conn.execute("""
+                CREATE TABLE users_new (
+                    workspace_id    TEXT NOT NULL DEFAULT 'default',
+                    slack_user_id   TEXT NOT NULL,
+                    slack_name      TEXT,
+                    display_name    TEXT,
+                    real_name       TEXT,
+                    dm_channel_id   TEXT,
+                    is_subscribed   INTEGER NOT NULL DEFAULT 1,
+                    created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                    updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                    PRIMARY KEY (workspace_id, slack_user_id)
+                )
+            """)
+
+            # 2. Copy data - use existing workspace_id if available, otherwise 'default'
+            if has_workspace_col:
+                conn.execute("""
+                    INSERT INTO users_new (workspace_id, slack_user_id, slack_name, display_name, real_name, dm_channel_id, is_subscribed, created_at, updated_at)
+                    SELECT workspace_id, slack_user_id, slack_name, display_name, real_name, dm_channel_id, is_subscribed, created_at, updated_at
+                    FROM users
+                """)
+            else:
+                conn.execute("""
+                    INSERT INTO users_new (workspace_id, slack_user_id, slack_name, display_name, real_name, dm_channel_id, is_subscribed, created_at, updated_at)
+                    SELECT 'default', slack_user_id, slack_name, display_name, real_name, dm_channel_id, is_subscribed, created_at, updated_at
+                    FROM users
+                """)
+
+            # 3. Drop old table and rename new
+            conn.execute("DROP TABLE users")
+            conn.execute("ALTER TABLE users_new RENAME TO users")
+
+            logger.info("Users table migration complete")
+
+        # Check send_log - only needs column addition (no PK change needed)
+        cursor = conn.execute("PRAGMA table_info(send_log)")
+        columns = {row["name"] for row in cursor.fetchall()}
+        if columns and "workspace_id" not in columns:
             conn.execute("ALTER TABLE send_log ADD COLUMN workspace_id TEXT NOT NULL DEFAULT 'default'")
 
-        if needs_migration("poll_messages"):
-            conn.execute("ALTER TABLE poll_messages ADD COLUMN workspace_id TEXT NOT NULL DEFAULT 'default'")
+        # Check poll_messages - needs primary key change
+        cursor = conn.execute("PRAGMA table_info(poll_messages)")
+        columns = {row["name"] for row in cursor.fetchall()}
+        if columns and not pk_includes_workspace("poll_messages"):
+            logger.info("Migrating poll_messages table...")
+            has_workspace_col = "workspace_id" in columns
 
-        if needs_migration("poll_votes"):
-            conn.execute("ALTER TABLE poll_votes ADD COLUMN workspace_id TEXT NOT NULL DEFAULT 'default'")
+            conn.execute("""
+                CREATE TABLE poll_messages_new (
+                    poll_id      TEXT NOT NULL,
+                    workspace_id TEXT NOT NULL DEFAULT 'default',
+                    user_id      TEXT NOT NULL,
+                    channel_id   TEXT NOT NULL,
+                    message_ts   TEXT NOT NULL,
+                    PRIMARY KEY (poll_id, workspace_id, user_id),
+                    FOREIGN KEY(poll_id) REFERENCES polls(poll_id)
+                )
+            """)
+            if has_workspace_col:
+                conn.execute("""
+                    INSERT INTO poll_messages_new (poll_id, workspace_id, user_id, channel_id, message_ts)
+                    SELECT poll_id, workspace_id, user_id, channel_id, message_ts FROM poll_messages
+                """)
+            else:
+                conn.execute("""
+                    INSERT INTO poll_messages_new (poll_id, workspace_id, user_id, channel_id, message_ts)
+                    SELECT poll_id, 'default', user_id, channel_id, message_ts FROM poll_messages
+                """)
+            conn.execute("DROP TABLE poll_messages")
+            conn.execute("ALTER TABLE poll_messages_new RENAME TO poll_messages")
+
+        # Check poll_votes - needs primary key change
+        cursor = conn.execute("PRAGMA table_info(poll_votes)")
+        columns = {row["name"] for row in cursor.fetchall()}
+        if columns and not pk_includes_workspace("poll_votes"):
+            logger.info("Migrating poll_votes table...")
+            has_workspace_col = "workspace_id" in columns
+
+            conn.execute("""
+                CREATE TABLE poll_votes_new (
+                    poll_id         TEXT NOT NULL,
+                    workspace_id    TEXT NOT NULL DEFAULT 'default',
+                    user_id         TEXT NOT NULL,
+                    restaurant_name TEXT NOT NULL,
+                    voted_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                    PRIMARY KEY (poll_id, workspace_id, user_id, restaurant_name),
+                    FOREIGN KEY(poll_id) REFERENCES polls(poll_id)
+                )
+            """)
+            if has_workspace_col:
+                conn.execute("""
+                    INSERT INTO poll_votes_new (poll_id, workspace_id, user_id, restaurant_name, voted_at)
+                    SELECT poll_id, workspace_id, user_id, restaurant_name, voted_at FROM poll_votes
+                """)
+            else:
+                conn.execute("""
+                    INSERT INTO poll_votes_new (poll_id, workspace_id, user_id, restaurant_name, voted_at)
+                    SELECT poll_id, 'default', user_id, restaurant_name, voted_at FROM poll_votes
+                """)
+            conn.execute("DROP TABLE poll_votes")
+            conn.execute("ALTER TABLE poll_votes_new RENAME TO poll_votes")
 
 
 @dataclass

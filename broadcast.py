@@ -21,6 +21,7 @@ from db import (
     update_user_dm_channel,
 )
 from menu import fetch_menu, menu_to_dict, render_menu_blocks
+from poll import get_client
 
 logger = logging.getLogger(__name__)
 
@@ -102,11 +103,11 @@ def broadcast(
     button: ButtonDefinition,
     initiated_by: str,
 ) -> BroadcastResult:
-    """Send DM broadcast to all subscribed users in a workspace.
+    """Send DM broadcast to all subscribed users across ALL workspaces.
 
     Args:
-        client: Slack WebClient
-        workspace_id: Workspace ID to broadcast to
+        client: Slack WebClient (used as fallback for initiator's workspace)
+        workspace_id: Workspace ID where broadcast was initiated
         button: Button definition that triggered this broadcast
         initiated_by: Slack user ID who initiated the broadcast
 
@@ -132,11 +133,11 @@ def broadcast(
         menu_data=menu_data,
     )
 
-    # Get subscribed users for this workspace
-    users = get_subscribed_users(workspace_id)
+    # Get ALL subscribed users across all workspaces
+    users = get_subscribed_users()  # No workspace filter = all workspaces
 
     logger.info(
-        "Starting broadcast broadcast_id=%s workspace=%s action=%s initiated_by=%s targets=%d",
+        "Starting broadcast broadcast_id=%s from_workspace=%s action=%s initiated_by=%s targets=%d",
         broadcast_id,
         workspace_id,
         action,
@@ -152,6 +153,23 @@ def broadcast(
     failures: list[tuple[str, str]] = []
 
     for user in users:
+        # Get the correct client for this user's workspace
+        user_workspace = user.workspace_id
+        user_client = get_client(user_workspace)
+        if not user_client:
+            # Fallback to initiator's client (only works for same workspace)
+            if user_workspace == workspace_id:
+                user_client = client
+            else:
+                logger.warning(
+                    "No client for workspace %s, skipping user %s",
+                    user_workspace,
+                    user.slack_user_id,
+                )
+                failure_count += 1
+                failures.append((user.slack_user_id, "no_client_for_workspace"))
+                continue
+
         dm_channel_id = user.dm_channel_id
         dm_ts = None
         ok = False
@@ -160,15 +178,15 @@ def broadcast(
         try:
             # Open DM channel if not cached
             if not dm_channel_id:
-                dm_channel_id = _open_dm_channel(client, user.slack_user_id)
+                dm_channel_id = _open_dm_channel(user_client, user.slack_user_id)
                 if dm_channel_id:
-                    update_user_dm_channel(workspace_id, user.slack_user_id, dm_channel_id)
+                    update_user_dm_channel(user_workspace, user.slack_user_id, dm_channel_id)
 
             if not dm_channel_id:
                 raise SlackApiError("Failed to open DM channel", {"error": "channel_not_found"})
 
-            # Send message
-            response = client.chat_postMessage(
+            # Send message using the user's workspace client
+            response = user_client.chat_postMessage(
                 channel=dm_channel_id,
                 text=text,
                 blocks=blocks,
@@ -188,15 +206,16 @@ def broadcast(
             failure_count += 1
             failures.append((user.slack_user_id, error))
             logger.error(
-                "Failed to send DM to %s: %s broadcast_id=%s",
+                "Failed to send DM to %s in workspace %s: %s broadcast_id=%s",
                 user.slack_user_id,
+                user_workspace,
                 error,
                 broadcast_id,
             )
 
-        # Log to send_log
+        # Log to send_log (use user's workspace, not initiator's)
         insert_send_log(
-            workspace_id=workspace_id,
+            workspace_id=user_workspace,
             broadcast_id=broadcast_id,
             action=action,
             initiated_by=initiated_by,
