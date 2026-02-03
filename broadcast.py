@@ -170,27 +170,20 @@ def broadcast(
                 failures.append((user.slack_user_id, "no_client_for_workspace"))
                 continue
 
-        dm_channel_id = user.dm_channel_id
         dm_ts = None
         ok = False
         error = None
 
         try:
-            # Open DM channel if not cached
-            if not dm_channel_id:
-                dm_channel_id = _open_dm_channel(user_client, user.slack_user_id)
-                if dm_channel_id:
-                    update_user_dm_channel(user_workspace, user.slack_user_id, dm_channel_id)
-
-            if not dm_channel_id:
-                raise SlackApiError("Failed to open DM channel", {"error": "channel_not_found"})
-
-            # Send message using the user's workspace client
+            # Send message directly to user_id - Slack resolves DM channel each time
+            # This may help with mobile app caching issues
             response = user_client.chat_postMessage(
-                channel=dm_channel_id,
+                channel=user.slack_user_id,
                 text=text,
                 blocks=blocks,
             )
+            # Get resolved channel ID from response for logging
+            dm_channel_id = response.get("channel")
 
             if response["ok"]:
                 dm_ts = response.get("ts")
